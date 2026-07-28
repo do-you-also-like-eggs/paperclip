@@ -52,3 +52,6 @@ tests/release-smoke/playwright-report/
 .superset/
 .claude/worktrees/
 server/ui-dist/
+# IDE files
+*.iml
+.idea/

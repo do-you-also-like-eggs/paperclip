@@ -1,0 +1,89 @@
+# Paperclip — Docker Compose (with PostgreSQL)
+#
+# Usage:
+#   1. Copy .env.example to .env and fill in the required values.
+#   2. docker compose up --build
+#   3. Open http://localhost:3100
+#
+# Persistent data:
+#   - PostgreSQL data: Docker named volume "pgdata"
+#   - Paperclip app data (files, secrets, agent workspaces): Docker named volume "paperclip-data"
+#
+# To tear everything down including volumes (DESTRUCTIVE — deletes all data):
+#   docker compose down -v
+
+services:
+  # ─── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-paperclip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paperclip}
+      POSTGRES_DB: ${POSTGRES_DB:-paperclip}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-paperclip} -d ${POSTGRES_DB:-paperclip}"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Expose on localhost only — not required by the server container (uses the
+    # internal Docker network), but useful for direct DB access during development.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  # ─── Paperclip server ────────────────────────────────────────────────────────
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PAPERCLIP_PORT:-3100}:3100"
+    environment:
+      # Database — points at the db service over the internal Docker network
+      DATABASE_URL: postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:-paperclip}@db:5432/${POSTGRES_DB:-paperclip}
+
+      # Server binding
+      HOST: "0.0.0.0"
+      PORT: "3100"
+
+      # Serve the React UI from the same process
+      SERVE_UI: "true"
+
+      # Paperclip home directory inside the container (mapped to the named volume below)
+      PAPERCLIP_HOME: /paperclip
+
+      # Deployment mode — "authenticated" requires user sign-up/login.
+      # Change to "local_trusted" to skip auth for local-only use.
+      PAPERCLIP_DEPLOYMENT_MODE: ${PAPERCLIP_DEPLOYMENT_MODE:-authenticated}
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: ${PAPERCLIP_DEPLOYMENT_EXPOSURE:-private}
+
+      # Public URL used for auth callbacks and invite links.
+      # Override if you expose Paperclip on a non-localhost address.
+      PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
+
+      # Auth secret — MUST be set to a random value in production.
+      # Generate one with: openssl rand -hex 32
+      # Set in your .env file (see .env.example).
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (see .env.example)}
+
+      # Optional: LLM provider keys for running local adapters inside the container
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+    volumes:
+      # All Paperclip app data: files, secrets, agent workspaces
+      - paperclip-data:/paperclip
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+# ─── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  # PostgreSQL data — survives container restarts and rebuilds
+  pgdata:
+  # Paperclip application data — survives container restarts and rebuilds
+  paperclip-data:
