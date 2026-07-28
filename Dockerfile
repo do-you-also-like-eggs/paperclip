@@ -49,7 +49,8 @@ RUN pnpm --filter @paperclipai/adapter-utils build
 RUN pnpm --filter "@paperclipai/adapter-*" build
 RUN pnpm --filter @paperclipai/plugin-sdk build
 RUN pnpm --filter @paperclipai/ui build
-RUN pnpm --filter @paperclipai/server build
+# Build server: run tsc directly, then copy assets
+RUN cd server && npx tsc && mkdir -p dist/onboarding-assets && cp -R src/onboarding-assets/. dist/onboarding-assets/
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 
 FROM base AS production
