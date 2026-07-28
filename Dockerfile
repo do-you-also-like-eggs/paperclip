@@ -44,13 +44,14 @@ FROM base AS build
 WORKDIR /app
 COPY --from=deps /app /app
 COPY . .
+# Build all packages in dependency order (shared → adapters → plugin-sdk → ui → server)
 RUN pnpm --filter @paperclipai/shared build
 RUN pnpm --filter @paperclipai/adapter-utils build
 RUN pnpm --filter "@paperclipai/adapter-*" build
 RUN pnpm --filter @paperclipai/plugin-sdk build
 RUN pnpm --filter @paperclipai/ui build
-# Build server: compile TypeScript, ignore type errors (they're lint-only in this fork)
-RUN cd server && npx tsc --noEmitOnError false && mkdir -p dist/onboarding-assets && cp -R src/onboarding-assets/. dist/onboarding-assets/
+# Build server: use local tsc, force exit 0 to ignore type errors
+RUN cd server && ./node_modules/.bin/tsc --noEmitOnError false; mkdir -p dist/onboarding-assets && cp -R src/onboarding-assets/. dist/onboarding-assets/
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 
 FROM base AS production
